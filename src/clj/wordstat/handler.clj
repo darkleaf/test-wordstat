@@ -13,14 +13,17 @@
       (string? words) [words]
       :else words)))
 
+(defn action [req]
+  (let [words (get-words req)
+        fetcher (:wordstat/fetcher req)
+        rss-ch (fetcher words)
+        result-ch (async/transduce processor/xf conj {} rss-ch)]
+    (async/go
+      (let [result (async/<! result-ch)
+            json-str (json/generate-string result
+                                           {:pretty true})]
+        (resp/response json-str)))))
+
 (def handler
-  (wrap-params
-   (fn [req]
-     (let [words (get-words req)
-           fetcher (:wordstat/fetcher req)
-           rss-ch (fetcher words)
-           result-ch (async/transduce processor/xf conj {} rss-ch)]
-       (async/go
-         (let [json-str (json/generate-string (async/<! result-ch)
-                                              {:pretty true})]
-           (resp/response json-str)))))))
+  (-> action
+      (wrap-params)))

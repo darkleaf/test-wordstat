@@ -1,39 +1,31 @@
 (ns wordstat.http
   (:require
    [mount.core :refer [defstate]]
-   [clojure.core.async :as async]
    [qbits.jet.server :as server]
    [qbits.jet.client.http :as http]
-   [wordstat.handler :refer [handler]])
-  (:import
-   [java.net URLEncoder]))
+   [wordstat.fetcher :refer [fetcher]]
+   [wordstat.handler :refer [handler]]))
+
+(def port (or (System/getenv "HTTP_PORT")
+              3000))
+
+(def max-connections-per-destination
+  (or (System/getenv "MAX_CONNECTIONS_PER_DESTINATION")
+      10))
 
 (defstate http-client
-  :start (http/client {:max-connections-per-destination 10})
-  :stop (.stop http-client))
-
-(defn get-rss [client word]
-  (let [url (str "http://blogs.yandex.ru/search.rss?numdoc=10&text="
-                 (URLEncoder/encode word))]
-    (async/go
-      (-> (http/get client url)
-          (async/<!)
-          :body
-          (async/<!)))))
-
-(defn make-fetcher [client]
-  (fn [words]
-    (async/merge (map #(get-rss client %) words))))
+  :start (http/client {:max-connections-per-destination max-connections-per-destination})
+  :stop (http/stop-client! http-client))
 
 (defn wrap-add-fetcher [handler]
-  (let [fetcher (make-fetcher http-client)]
+  (let [c-fetcher (partial fetcher http-client)]
     (fn [req]
       (-> req
-          (assoc :wordstat/fetcher fetcher)
+          (assoc :wordstat/fetcher c-fetcher)
           (handler)))))
 
 (defstate web-server
   :start (server/run-jetty {:ring-handler (wrap-add-fetcher handler)
-                            :port 3000
+                            :port port
                             :join? false})
   :stop (.stop web-server))
