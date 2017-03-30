@@ -22,3 +22,11 @@
             (merge-env! :source-paths #{"src/clj_dev" "test/clj"})
             (require 'dev)
             (apply r xs)))
+
+(deftask build []
+  (comp
+   (uber)
+   (aot :namespace #{'wordstat.entry})
+   (jar :file "wordstat.jar" :main 'wordstat.entry)
+   (sift :include #{#"wordstat.jar"})
+   (target)))
